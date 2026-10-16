@@ -279,6 +279,11 @@ list it together with a group that holds it.
 
 Paint values (`fill`, `stroke`) accept `"#rrggbb"`, `"none"`, `[r,g,b]` (0..1), `{"c","m","y","k"}`, `{"gray"}`,
 or a full `paint.setFill` params object (`{"gradient": …}`, `{"swatch": "name"}`).
+These are convenience-tool fields: `set_paint {"ids":[35],"fill":"#ff0000"}` sets a fill.
+The raw command instead takes `color`: `run_command {"command":"paint.setFill","params":{"id":35,"color":"#ff0000"}}`.
+`paint.setStroke` takes the same paint keys (`color`, `none`, `swatch`, `gradient`). If a raw command
+gets only `fill` or `stroke` as its paint, its error gives a `color` example and points to `set_paint`;
+it does not treat those fields as aliases or edit the document. Keep the intended `id`/`ids` when retrying.
 For `draw_shape` and `draw_path`, omitted paint fields inherit the current [new-art appearance](#new-art). Both
 also style the new object in the same call: `dash` (lengths, or null for solid), `cap`
 (butt|round|square) and `join` (miter|round|bevel) go to `stroke.set` with `strokeWidth`; `opacity` (0–100 %)

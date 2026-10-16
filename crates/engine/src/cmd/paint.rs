@@ -366,7 +366,14 @@ fn set_paint(s: &mut Session, p: &Value, fill: bool) -> Result<Value> {
     if p.get("tint").is_some() && p.get("swatch").is_none() {
         return Err(bad(cmd, "`tint` goes with a global or spot `swatch`"));
     }
-    let paint = paint_from(s, p)?.ok_or_else(|| bad(cmd, "give color, none, swatch or gradient"))?;
+    let paint = paint_from(s, p)?.ok_or_else(|| {
+        let hint = if p.get("fill").is_some() || p.get("stroke").is_some() {
+            "use `color` instead of `fill`/`stroke` here, e.g. {\"color\":\"#ff0000\"}; MCP `set_paint` accepts `fill` and `stroke`"
+        } else {
+            "give color, none, swatch or gradient, e.g. {\"color\":\"#ff0000\"}"
+        };
+        bad(cmd, hint)
+    })?;
     apply_paint(s, p, paint, fill)
 }
 

@@ -349,6 +349,58 @@ fn headless_path_gesture_undo() {
     assert_eq!(&std::fs::read(tmp("x.png")).unwrap()[..4], b"\x89PNG");
 }
 
+/// Raw paint commands and the convenience tool use different keys. A rejected call must
+/// explain the repair, leave the document alone, and allow a corrected call on the same server.
+#[test]
+fn paint_parameter_errors_guide_recovery_without_editing() {
+    fn value(s: &mut Server, name: &str, args: Value) -> Value {
+        let r = call(s, 100, name, args);
+        assert_eq!(r["isError"], false, "{r}");
+        serde_json::from_str(&text_of(&r)).unwrap()
+    }
+    for (command, field) in [("paint.setFill", "fill"), ("paint.setStroke", "stroke")] {
+        let mut s = server();
+        let target = value(&mut s, "draw_shape", json!({"shape": "rectangle", "x": 10, "y": 10, "width": 50, "height": 40}))["id"].clone();
+        // A different object is selected: preserve the explicit target while correcting a key.
+        let other = value(&mut s, "draw_shape", json!({"shape": "ellipse", "x": 80, "y": 10, "width": 30, "height": 30}))["id"].clone();
+        let before = value(&mut s, "inspect_document", json!({}));
+        for wrong in [json!({"fill": "#ff0000"}), json!({"stroke": "#ff0000"}), json!({"fill": null, "stroke": null})] {
+            let mut params = wrong;
+            params["id"] = target.clone();
+            let r = call(&mut s, 101, "run_command", json!({"command": command, "params": params}));
+            assert_eq!(r["isError"], true, "{r}");
+            let error = text_of(&r);
+            for fragment in [command, "color", "#ff0000", "set_paint", "fill", "stroke"] {
+                assert!(error.contains(fragment), "{fragment}: {error}");
+            }
+            assert_eq!(value(&mut s, "inspect_document", json!({})), before);
+        }
+        let r = call(&mut s, 102, "run_command", json!({"command": command, "params": {"id": target}}));
+        assert_eq!(r["isError"], true, "{r}");
+        let error = text_of(&r);
+        for fragment in ["color", "none", "swatch", "gradient", "#ff0000"] {
+            assert!(error.contains(fragment), "{fragment}: {error}");
+        }
+        assert_eq!(value(&mut s, "inspect_document", json!({})), before);
+
+        value(&mut s, "run_command", json!({"command": command, "params": {"id": target, "color": "#ff0000"}}));
+        let after = value(&mut s, "inspect_document", json!({}));
+        let node = |doc: &Value, id: &Value| doc["layers"][0]["children"].as_array().unwrap().iter().find(|n| n["id"] == *id).cloned().unwrap();
+        assert_eq!(node(&after, &target)[field], "#ff0000");
+        assert_eq!(node(&after, &other), node(&before, &other));
+        value(&mut s, "undo", json!({}));
+        assert_eq!(value(&mut s, "inspect_document", json!({}))["layers"], before["layers"]);
+
+        // The same field is valid on set_paint, including an explicit ids target.
+        let mut args = json!({"ids": [target]});
+        args[field] = json!("#00ff00");
+        value(&mut s, "set_paint", args);
+        let after = value(&mut s, "inspect_document", json!({}));
+        assert_eq!(node(&after, &target)[field], "#00ff00");
+        assert_eq!(node(&after, &other), node(&before, &other));
+    }
+}
+
 /// inspect_document reads back the paint type's characters show, as add_text and set_paint give it.
 #[test]
 fn inspect_document_reports_the_paint_of_type() {
